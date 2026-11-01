@@ -223,7 +223,8 @@ def load_and_process_data():
             y_base_pred1, y_prune_pred1, 
             y_base_pred2, y_prune_pred2, 
             y_pred_xgb_base, y_pred_xgb_tuned, 
-            X_train_smote, y_train_smote)
+            X_train_smote, y_train_smote,
+            ordinal_encoder, oh_encoder, X_train.columns)
 
 with st.spinner("🚀 Loading dataset and training Base & Tuned ML models..."):
     (df_clean, df_final, X_test, y_test, 
@@ -233,13 +234,19 @@ with st.spinner("🚀 Loading dataset and training Base & Tuned ML models..."):
      y_base_pred1, y_prune_pred1, 
      y_base_pred2, y_prune_pred2, 
      y_pred_xgb_base, y_pred_xgb_tuned, 
-     X_train_smote, y_train_smote) = load_and_process_data()
+     X_train_smote, y_train_smote,
+     ordinal_encoder, oh_encoder, model_feature_columns) = load_and_process_data()
 
 # Main Application Layout
 st.markdown('<p class="main-header">HR Job Acceptance Intelligence Dashboard</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-text">End-to-end recruitment analytics, predictive modeling performance, and business impact metrics.</p>', unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["📊 Tab 1: Exploratory Data Analysis (EDA)", "🤖 Tab 2: ML Model Performance", "📈 Tab 3: Business & ML KPIs"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Tab 1: EDA", 
+    "🤖 Tab 2: ML Models", 
+    "📈 Tab 3: Business & ML KPIs", 
+    "🔮 Tab 4: ML Prediction"
+])
 
 # ================= TAB 1 =================
 with tab1:
@@ -444,7 +451,6 @@ with tab2:
     st.subheader("📊 Base vs. Tuned Models: Training vs. Testing Accuracy Comparison")
     st.markdown("Compare training accuracy against testing accuracy across all Base and Tuned models to demonstrate overfitting reduction.")
 
-    # Calculate Train and Test Accuracies for all 6 models
     dt_base_train = model1_base.score(X_train_smote, y_train_smote) * 100
     dt_base_test = accuracy_score(y_test, y_base_pred1) * 100
 
@@ -463,7 +469,6 @@ with tab2:
     xgb_tuned_train = xgbmodel_tuned.score(X_train_smote, y_train_smote) * 100
     xgb_tuned_test = accuracy_score(y_test, y_pred_xgb_tuned) * 100
 
-    # Summary Table for Presentation
     summary_table = pd.DataFrame({
         'Model Variant': [
             'Base Decision Tree', 'Pruned Decision Tree', 
@@ -492,7 +497,6 @@ with tab2:
 with tab3:
     st.header("Business KPIs & Machine Learning KPIs")
 
-    # Calculations matching user KPI logic with updated status labels
     total_candidates = len(df_clean)
     accepted_candidates = len(df_clean[df_clean['status'] == 'Job Accepted'])
     overall_acceptance_rate = (accepted_candidates / total_candidates) * 100
@@ -507,7 +511,6 @@ with tab3:
     rf_accuracy = accuracy_score(y_test, y_prune_pred2) * 100
     xgb_accuracy = accuracy_score(y_test, y_pred_xgb_tuned) * 100
 
-    # KPI Top Metrics Row
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -544,17 +547,8 @@ with tab3:
         st.write(f"- **XGBoost (Tuned):** {xgb_accuracy:.2f}%")
 
     st.markdown("---")
-    st.subheader("Job Acceptance Probability Spread Distribution")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.histplot(data=df_clean, x='placement_probability_score', hue='status', kde=True, bins=15, palette='coolwarm', ax=ax)
-    ax.set_title("Composite Job Acceptance Probability Spread by Status")
-    st.pyplot(fig)
-    plt.close(fig)
-
-    st.markdown("---")
     st.subheader("Key Factors Influencing Job Acceptance Decisions")
 
-    # Extract and sort feature importances from Tuned XGBoost
     xgb_importances = pd.DataFrame({
         'Feature': X_train_smote.columns,
         'Importance': xgbmodel_tuned.feature_importances_
@@ -590,7 +584,6 @@ with tab3:
 
     xgb_importances['Feature_Readable'] = xgb_importances['Feature'].map(readable_names).fillna(xgb_importances['Feature'])
 
-    # Plot top factors
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.barplot(
         data=xgb_importances.head(15),
@@ -608,3 +601,123 @@ with tab3:
 
     st.markdown("#### Top Factors Summary Table")
     st.dataframe(xgb_importances[['Feature_Readable', 'Importance']].head(10).reset_index(drop=True).style.format({"Importance": "{:.4f}"}))
+
+# ================= TAB 4: ML LIVE PREDICTION =================
+with tab4:
+    st.header("🔮 Tab 4: Live Candidate Job Acceptance Prediction")
+
+    with st.form("prediction_form"):
+        col_p1, col_p2, col_p3 = st.columns(3)
+
+        with col_p1:
+            st.subheader("Candidate Demographics & Background")
+            gender = st.selectbox("Gender", ["Male", "Female"])
+            age_years = st.number_input("Age (Years)", min_value=18, max_value=60, value=25)
+            degree_specialization = st.selectbox("Degree Specialization", ["Computer Science", "Information Technology", "Electronics", "Mechanical", "Others"])
+            company_tier = st.selectbox("Company Tier", ["Tier 1", "Tier 2", "Tier 3"])
+
+        with col_p2:
+            st.subheader("Experience & Professional Profile")
+            years_of_experience = st.number_input("Years of Experience", min_value=0.0, max_value=25.0, value=2.0, step=0.5)
+            relevant_experience = st.selectbox("Relevant Experience", ["Relevant", "Not Relevant"])
+            internship_experience = st.selectbox("Internship Experience", ["Yes", "No"])
+            job_role_match = st.selectbox("Job Role Match", ["Matched", "Not Matched"])
+            career_switch_willingness = st.selectbox("Career Switch Willingness", ["Willing", "Not Willing"])
+
+        with col_p3:
+            st.subheader("Financial & Interview Metrics")
+            previous_ctc_lpa = st.number_input("Previous CTC (LPA)", min_value=0.0, max_value=100.0, value=5.0, step=0.5)
+            expected_ctc_lpa = st.number_input("Expected CTC (LPA)", min_value=0.0, max_value=120.0, value=7.0, step=0.5)
+            skills_match_percentage = st.slider("Skills Match %", min_value=0.0, max_value=100.0, value=75.0)
+            avg_interview_score = st.slider("Average Interview Score", min_value=0.0, max_value=100.0, value=70.0)
+            academic_percentage = st.slider("Academic Percentage %", min_value=0.0, max_value=100.0, value=72.0)
+
+        col_p4, col_p5 = st.columns(2)
+        with col_p4:
+            competition_level = st.selectbox("Competition Level", ["Low", "Medium", "High"])
+            notice_period_days = st.number_input("Notice Period (Days)", min_value=0, max_value=120, value=30)
+            employment_gap_months = st.number_input("Employment Gap (Months)", min_value=0, max_value=36, value=0)
+
+        with col_p5:
+            bond_requirement = st.selectbox("Bond Requirement", ["Required", "Not Required"])
+            layoff_history = st.selectbox("Layoff History", ["Yes", "No"])
+            relocation_willingness = st.selectbox("Relocation Willingness", ["Willing", "Not Willing"])
+            certifications_count = st.number_input("Certifications Count", min_value=0, max_value=10, value=1)
+
+        submitted = st.form_submit_button("🔮 Predict Job Acceptance Status", type="primary")
+
+    if submitted:
+        # Calculate derived feature for the model pipeline
+        placement_probability_score = ((skills_match_percentage * 0.4) + (avg_interview_score * 0.4) + (academic_percentage * 0.2)) / 100
+
+        # Construct raw input dataframe
+        input_dict = {
+            'age_years': [age_years],
+            'years_of_experience': [years_of_experience],
+            'previous_ctc_lpa': [previous_ctc_lpa],
+            'expected_ctc_lpa': [expected_ctc_lpa],
+            'notice_period_days': [notice_period_days],
+            'employment_gap_months': [employment_gap_months],
+            'certifications_count': [certifications_count],
+            'skills_match_percentage': [skills_match_percentage],
+            'company_tier': [company_tier],
+            'competition_level': [competition_level],
+            'gender': [gender],
+            'degree_specialization': [degree_specialization],
+            'career_switch_willingness': [career_switch_willingness],
+            'relevant_experience': [relevant_experience],
+            'job_role_match': [job_role_match],
+            'bond_requirement': [bond_requirement],
+            'layoff_history': [layoff_history],
+            'relocation_willingness': [relocation_willingness],
+            'internship_experience': [internship_experience],
+            'academic_percentage': [academic_percentage],
+            'avg_interview_score': [avg_interview_score],
+            'placement_probability_score': [placement_probability_score]
+        }
+
+        input_df = pd.DataFrame(input_dict)
+
+        # Apply encoders consistent with training pipeline
+        ordinal_cols = ['company_tier', 'competition_level']
+        nominal_cols = [
+            'gender', 'degree_specialization', 'career_switch_willingness',
+            'relevant_experience', 'job_role_match', 'bond_requirement',
+            'layoff_history', 'relocation_willingness', 'internship_experience'
+        ]
+
+        input_df[ordinal_cols] = ordinal_encoder.transform(input_df[ordinal_cols])
+
+        encoded_oh = oh_encoder.transform(input_df[nominal_cols])
+        encoded_feature_names = oh_encoder.get_feature_names_out(nominal_cols)
+        input_df_oh = pd.DataFrame(encoded_oh, columns=encoded_feature_names, index=input_df.index)
+
+        input_df = input_df.drop(columns=nominal_cols)
+        input_df = pd.concat([input_df, input_df_oh], axis=1)
+
+        # Ensure exact column alignment/order with training features
+        for col in model_feature_columns:
+            if col not in input_df.columns:
+                input_df[col] = 0
+        input_df = input_df[model_feature_columns]
+
+        # Make Prediction using Tuned XGBoost
+        pred_class = xgbmodel_tuned.predict(input_df)[0]
+        pred_proba = xgbmodel_tuned.predict_proba(input_df)[0]
+
+        st.markdown("---")
+        st.subheader("🎯 Prediction Results")
+
+        res_col1, res_col2 = st.columns(2)
+        with res_col1:
+            if pred_class == 1:
+                st.success("### 🎉 Prediction: Job Accepted")
+                st.write(f"**Confidence Score:** `{pred_proba[1]*100:.2f}%` likelihood that the candidate will accept the job offer.")
+            else:
+                st.error("### ❌ Prediction: Job Not Accepted")
+                st.write(f"**Confidence Score:** `{pred_proba[0]*100:.2f}%` likelihood that the candidate will decline/not accept the job offer.")
+
+        with res_col2:
+            st.info("### 📈 Class Probabilities Breakdown")
+            st.write(f"- **Job Not Accepted:** `{pred_proba[0]*100:.2f}%`")
+            st.write(f"- **Job Accepted:** `{pred_proba[1]*100:.2f}%`")
